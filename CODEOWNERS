@@ -22,6 +22,7 @@
 /bundles/org.openhab.binding.bluetooth.blukii/ @kaikreuzer
 /bundles/org.openhab.binding.bluetooth.ruuvitag/ @ssalonen
 /bundles/org.openhab.binding.boschindego/ @jofleck
+/bundles/org.openhab.binding.boschshc/ @stefan-kaestle
 /bundles/org.openhab.binding.bosesoundtouch/ @marvkis @tratho
 /bundles/org.openhab.binding.buienradar/ @gedejong
 /bundles/org.openhab.binding.chromecast/ @kaikreuzer
