@@ -21,9 +21,12 @@ import org.eclipse.jdt.annotation.NonNull;
 import org.eclipse.jdt.annotation.Nullable;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.ContentResponse;
+import org.eclipse.jetty.client.api.Request;
+import org.eclipse.jetty.client.api.Response;
 import org.eclipse.jetty.client.api.Result;
 import org.eclipse.jetty.client.util.BufferingResponseListener;
 import org.eclipse.jetty.client.util.StringContentProvider;
+import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.smarthome.core.thing.Bridge;
 import org.eclipse.smarthome.core.thing.ChannelUID;
@@ -183,7 +186,8 @@ public class BoschSHCBridgeHandler extends BaseBridgeHandler {
 
                 if (this.devices != null) {
                     for (Device d : this.devices) {
-                        // TODO keeping these as warn for the time being, until we have a better means of listing
+                        // TODO keeping these as warn for the time being, until we have a better means
+                        // of listing
                         // devices with their Bosch ID
                         logger.warn("Found device: name={} id={}", d.name, d.id);
                         if (d.deviceSerivceIDs != null) {
@@ -224,7 +228,8 @@ public class BoschSHCBridgeHandler extends BaseBridgeHandler {
             Gson gson = new Gson();
             String str_content = gson.toJson(r);
 
-            // XXX Maybe we should use a different httpClient here, to avoid a race with concurrent use from other
+            // XXX Maybe we should use a different httpClient here, to avoid a race with
+            // concurrent use from other
             // functions.
             logger.info("Subscribe: Sending content: {} - using httpClient {}", str_content, this.httpClient);
 
@@ -244,7 +249,8 @@ public class BoschSHCBridgeHandler extends BaseBridgeHandler {
                     // content: [ [ '{"result":"e71k823d0-16","jsonrpc":"2.0"}\n' ] ]
 
                     // The key can then be used later for longPoll like this:
-                    // body: [ [ '{"jsonrpc":"2.0","method":"RE/longPoll","params":["e71k823d0-16",20]}' ] ]
+                    // body: [ [
+                    // '{"jsonrpc":"2.0","method":"RE/longPoll","params":["e71k823d0-16",20]}' ] ]
 
                     byte[] responseContent = getContent();
                     String content = new String(responseContent);
@@ -273,17 +279,17 @@ public class BoschSHCBridgeHandler extends BaseBridgeHandler {
     /**
      * Long polling
      *
-     * TODO Do we need to protect against concurrent execution of this method via locks etc?
+     * TODO Do we need to protect against concurrent execution of this method via
+     * locks etc?
      *
-     * If no subscription ID is present, this function will first try to acquire one. If that fails, it will attempt to
-     * retry after a small timeout.
+     * If no subscription ID is present, this function will first try to acquire
+     * one. If that fails, it will attempt to retry after a small timeout.
      *
      * Return whether to retry getting a new subscription and restart polling.
      */
     private void longPoll() {
         /*
-         * // TODO Change hard-coded Gateway ID
-         * // TODO Change hard-coded port
+         * // TODO Change hard-coded Gateway ID // TODO Change hard-coded port
          */
 
         if (this.subscriptionId == null) {
@@ -454,8 +460,7 @@ public class BoschSHCBridgeHandler extends BaseBridgeHandler {
             ContentResponse contentResponse;
             try {
                 logger.debug("Sending http request to Bosch to request rooms");
-                contentResponse = this.httpClient
-                        .newRequest("https://" + config.ipAddress + ":8444/smarthome/rooms")
+                contentResponse = this.httpClient.newRequest("https://" + config.ipAddress + ":8444/smarthome/rooms")
                         .header("Content-Type", "application/json").header("Accept", "application/json").method(GET)
                         .send();
 
@@ -491,9 +496,9 @@ public class BoschSHCBridgeHandler extends BaseBridgeHandler {
     /**
      * Query the Bosch Smart Home Controller for the state of the given thing.
      *
-     * @param thing Thing to query the device state for
+     * @param thing     Thing to query the device state for
      * @param stateName Name of the state to query
-     * @param classOfT Class to convert the resulting JSON to
+     * @param classOfT  Class to convert the resulting JSON to
      */
 
     public <T extends Object> T refreshState(@NonNull Thing thing, String stateName, Class<T> classOfT) {
@@ -537,9 +542,38 @@ public class BoschSHCBridgeHandler extends BaseBridgeHandler {
         return null;
     }
 
+    /**
+     * Sends a state change for a device to the controller
+     * 
+     * @param deviceId    Id of device to change state for
+     * @param serviceName Name of service of device to change state for
+     * @param state       New state data to set for service
+     * 
+     * @return Response of request
+     */
+    public <T extends Object> @Nullable Response putState(@NonNull String deviceId, String serviceName, T state) {
+        if (this.httpClient == null) {
+            return null;
+        }
+
+        // Create request
+        String url = this.createServiceUrl(serviceName, deviceId);
+        Request request = this.createRequest(url, PUT, state);
+
+        // Send request
+        try {
+            Response response = request.send();
+            return response;
+        } catch (InterruptedException | TimeoutException | ExecutionException e) {
+            logger.warn("HTTP request failed: {}", e);
+            return null;
+        }
+    }
+
     /*
-     * TODO: The only place from which we currently send updates is the PowerSwitch, might have to extend this over time
-     * if we want to enable the alarm system etc.
+     * TODO: The only place from which we currently send updates is the PowerSwitch,
+     * might have to extend this over time if we want to enable the alarm system
+     * etc.
      */
     public void updateSwitchState(@NonNull Thing thing, String command) {
 
@@ -584,4 +618,15 @@ public class BoschSHCBridgeHandler extends BaseBridgeHandler {
         }
     }
 
+    private String createServiceUrl(String serviceName, String deviceId) {
+        return "https://" + config.ipAddress + ":8444/smarthome/devices/" + deviceId + "/services/" + serviceName
+                + "/state";
+    }
+
+    private Request createRequest(String url, HttpMethod method, Object content) {
+        Gson gson = new Gson();
+        String body = gson.toJson(content);
+        return this.httpClient.newRequest(url).method(method).header("Content-Type", "application/json")
+                .content(new StringContentProvider(body));
+    }
 }
