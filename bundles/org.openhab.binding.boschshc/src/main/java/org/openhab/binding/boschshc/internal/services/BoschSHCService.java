@@ -2,12 +2,12 @@ package org.openhab.binding.boschshc.internal.services;
 
 import java.util.function.Consumer;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.boschshc.internal.BoschSHCBridgeHandler;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 
 /**
  * Base class of a service of a Bosch Smart Home device.
@@ -90,8 +90,11 @@ public abstract class BoschSHCService<TState extends BoschSHCServiceState> {
      * Requests the current state of the service and updates it.
      */
     public void refreshState() {
+        @Nullable
         TState state = this.bridgeHandler.getState(deviceId, this.serviceName, this.stateClass);
-        this.onStateUpdate(state);
+        if (state != null) {
+            this.onStateUpdate(state);
+        }
     }
 
     /**
