@@ -47,6 +47,13 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 
+/**
+ * Representation of a connection with a Bosch Smart Home Controller bridge.
+ *
+ * @author Stefan Kästle - Initial contribution
+ * @author Gerd Zanker - added HttpClient with pairing support
+ * @author Christian Oeing - refactorings of e.g. server registration
+ */
 @NonNullByDefault
 public class BoschSHCBridgeHandler extends BaseBridgeHandler {
 

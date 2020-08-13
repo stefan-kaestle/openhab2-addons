@@ -20,6 +20,7 @@ import org.eclipse.smarthome.core.thing.ThingTypeUID;
  * are used across the whole binding.
  *
  * @author Stefan Kästle - Initial contribution
+ * @author Christian Oeing - added Shutter Control, ThermostatHandler
  */
 @NonNullByDefault
 public class BoschSHCBindingConstants {
