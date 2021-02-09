@@ -290,11 +290,11 @@ public class BoschHttpClient extends HttpClient {
             if (errorResponseHandler != null) {
                 throw errorResponseHandler.apply(statusCode, textContent);
             } else {
-                throw new ExecutionException(String.format("Request failed with status code %s", statusCode), null);
+                throw new ExecutionException(String.format("Send request failed with status code %s", statusCode), null);
             }
         }
 
-        logger.debug("Received response: {} - status: {}", textContent, statusCode);
+        logger.debug("Send request completed with success: {} - status code: {}", textContent, statusCode);
 
         try {
             @Nullable
