@@ -275,7 +275,14 @@ public class BoschHttpClient extends HttpClient {
 
         ContentResponse contentResponse = request.send();
 
-        logger.debug("Received response: {} - status: {}", contentResponse.getContentAsString(),
+        // check HTTP status code
+        if (!HttpStatus.getCode(contentResponse.getStatus()).isSuccess()) {
+            logger.debug("Send request failed with status code: {}", contentResponse.getStatus());
+            throw new ExecutionException(
+                    String.format("Received HTTP Error, expected type %s", responseContentClass.getName()), null);
+        }
+
+        logger.debug("Send request completed with success: {} - status code: {}", contentResponse.getContentAsString(),
                 contentResponse.getStatus());
 
         try {
