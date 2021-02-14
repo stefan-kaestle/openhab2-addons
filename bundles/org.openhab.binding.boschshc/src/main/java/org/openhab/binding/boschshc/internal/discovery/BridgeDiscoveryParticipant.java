@@ -13,14 +13,9 @@
 package org.openhab.binding.boschshc.internal.discovery;
 
 import java.net.InetAddress;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import javax.jmdns.ServiceInfo;
 
@@ -54,11 +49,21 @@ import com.google.gson.Gson;
 @Component(configurationPid = "discovery.boschsmarthomebridge")
 public class BridgeDiscoveryParticipant implements MDNSDiscoveryParticipant {
 
-    public static final Set<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Collections
-            .unmodifiableSet(Stream.of(BoschSHCBindingConstants.THING_TYPE_SHC).collect(Collectors.toSet()));
+    public static final Set<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Set.of(BoschSHCBindingConstants.THING_TYPE_SHC);
 
     private final Gson gson = new Gson();
     private final Logger logger = LoggerFactory.getLogger(BridgeDiscoveryParticipant.class);
+    private final HttpClient httpClient;
+
+    public BridgeDiscoveryParticipant() {
+        // create http client upfront to later get public information from SHC
+        SslContextFactory sslContextFactory = new SslContextFactory.Client.Client(true); // Accept all certificates
+        sslContextFactory.setTrustAll(true);
+        sslContextFactory.setValidateCerts(false);
+        sslContextFactory.setValidatePeerCerts(false);
+        sslContextFactory.setEndpointIdentificationAlgorithm(null);
+        httpClient = new HttpClient(sslContextFactory);
+    }
 
     @Override
     public Set<ThingTypeUID> getSupportedThingTypeUIDs() {
@@ -72,67 +77,74 @@ public class BridgeDiscoveryParticipant implements MDNSDiscoveryParticipant {
 
     @Override
     public @Nullable DiscoveryResult createResult(ServiceInfo serviceInfo) {
-        logger.trace("ServiceInfo: {}", serviceInfo);
+        logger.debug("Bridge Discovery started for {}", serviceInfo);
 
+        @Nullable
         final ThingUID uid = getThingUID(serviceInfo);
         if (uid == null) {
             return null;
         }
 
-        Map<String, Object> properties = new HashMap<>(1);
-        properties.put("ipAddress", uid.getId().replace('-', '.'));
+        String ipAddress = uid.getId().replace('-', '.');
+        logger.info("Discovered Bosch Smart Home Controller at {}", ipAddress);
 
-        return DiscoveryResultBuilder.create(uid).withLabel("Smart Home Controller").withProperties(properties)
-                .withTTL(60 * 60 * 24).build();
+        return DiscoveryResultBuilder.create(uid).withProperty("ipAddress", ipAddress)
+                .withLabel("Bosch Smart Home Controller").withTTL(60 * 60 * 24).build();
     }
 
     @Override
     public @Nullable ThingUID getThingUID(ServiceInfo serviceInfo) {
+        @Nullable
         String ipAddress = getBridgeAddress(serviceInfo);
-        if (ipAddress.isEmpty()) {
-            return null;
+        if (ipAddress != null) {
+            return new ThingUID(BoschSHCBindingConstants.THING_TYPE_SHC, ipAddress.replace('.', '-'));
         }
-        return new ThingUID(BoschSHCBindingConstants.THING_TYPE_SHC, ipAddress.replace('.', '-'));
+        return null;
     }
 
-    private String getBridgeAddress(ServiceInfo serviceInfo) {
-        InetAddress[] addresses = serviceInfo.getInetAddresses();
-        if (addresses.length == 0) {
-            return "";
+    private @Nullable String getBridgeAddress(ServiceInfo serviceInfo) {
+        logger.trace("Discovering serviceInfo {}", serviceInfo);
+
+        for (InetAddress address : serviceInfo.getInetAddresses()) {
+            logger.trace("Discovering InetAddress {}", address);
+            @Nullable
+            String bridgeAddress = getBridgeAddress(address.getHostAddress());
+            if (bridgeAddress != null) {
+                return bridgeAddress;
+            }
         }
 
-        // Try to get public SHC info from address
-        String ipAddress = addresses[0].getHostAddress();
+        return null;
+    }
 
-        SslContextFactory sslContextFactory = new SslContextFactory.Client.Client(true); // Accept all certificates
-        sslContextFactory.setTrustAll(true);
-        sslContextFactory.setValidateCerts(false);
-        sslContextFactory.setValidatePeerCerts(false);
-        sslContextFactory.setEndpointIdentificationAlgorithm(null);
+    private @Nullable String getBridgeAddress(String ipAddress) {
 
-        HttpClient httpClient = new HttpClient(sslContextFactory);
         String url = String.format("https://%s:8446/smarthome/public/information", ipAddress);
-        logger.trace("Discovering {}", url);
+        logger.trace("Discovering ipAddress {}", url);
         try {
             httpClient.start();
             ContentResponse contentResponse = httpClient.newRequest(url).method(HttpMethod.GET).send();
             // check HTTP status code
             if (!HttpStatus.getCode(contentResponse.getStatus()).isSuccess()) {
                 logger.debug("Discovering failed with status code: {}", contentResponse.getStatus());
-                return "";
+                return null;
             }
 
             String content = contentResponse.getContentAsString();
-            logger.info("Discovered SHC at address {}, public info {}", ipAddress, content);
+            logger.debug("Discovered SHC - public info {}", content);
+            @Nullable
             PublicInformation versionInfo = gson.fromJson(content, PublicInformation.class);
-            return versionInfo.shcIpAddress;
+            if (versionInfo != null) {
+                return versionInfo.shcIpAddress;
+            }
+            return null;
 
-        } catch (NullPointerException | InterruptedException | TimeoutException | ExecutionException e) {
-            logger.trace("Discovering failed with exception: {}", e);
-            return "";
+        } catch (InterruptedException | TimeoutException | ExecutionException e) {
+            logger.trace("Discovering failed with exception", e);
+            return null;
         } catch (Exception e) {
-            logger.trace("Discovering failed in http client start: {}", e);
-            return "";
+            logger.trace("Discovering failed in http client start", e);
+            return null;
         }
     }
 }
