@@ -12,7 +12,6 @@
  */
 package org.openhab.binding.boschshc.internal.devices.bridge.dto;
 
-
 /**
  * Public Information of the controller.
  *

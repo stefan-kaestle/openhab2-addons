@@ -21,12 +21,12 @@ import javax.jmdns.ServiceInfo;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
-import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.ContentResponse;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.openhab.binding.boschshc.internal.devices.BoschSHCBindingConstants;
+import org.openhab.binding.boschshc.internal.devices.bridge.BoschHttpClient;
 import org.openhab.binding.boschshc.internal.devices.bridge.dto.PublicInformation;
 import org.openhab.core.config.discovery.DiscoveryResult;
 import org.openhab.core.config.discovery.DiscoveryResultBuilder;
@@ -53,16 +53,9 @@ public class BridgeDiscoveryParticipant implements MDNSDiscoveryParticipant {
 
     private final Gson gson = new Gson();
     private final Logger logger = LoggerFactory.getLogger(BridgeDiscoveryParticipant.class);
-    private final HttpClient httpClient;
+    private String cachedIpAddress = "";
 
     public BridgeDiscoveryParticipant() {
-        // create http client upfront to later get public information from SHC
-        SslContextFactory sslContextFactory = new SslContextFactory.Client.Client(true); // Accept all certificates
-        sslContextFactory.setTrustAll(true);
-        sslContextFactory.setValidateCerts(false);
-        sslContextFactory.setValidatePeerCerts(false);
-        sslContextFactory.setEndpointIdentificationAlgorithm(null);
-        httpClient = new HttpClient(sslContextFactory);
     }
 
     @Override
@@ -118,12 +111,29 @@ public class BridgeDiscoveryParticipant implements MDNSDiscoveryParticipant {
     }
 
     private @Nullable String getBridgeAddress(String ipAddress) {
-
-        String url = String.format("https://%s:8446/smarthome/public/information", ipAddress);
-        logger.trace("Discovering ipAddress {}", url);
+        logger.trace("Discovering ipAddress {}", ipAddress);
         try {
+            // return a cached IP address to avoid many REST calls
+            // the BridgeDiscovery is executed every 5s and this will be too many request for the SHC
+            if (!cachedIpAddress.isEmpty()) {
+                logger.debug("Discovered SHC - returning cached IP address {} from first successful discovery",
+                        cachedIpAddress);
+                return cachedIpAddress;
+            }
+            // prepare ssl content and http client
+            SslContextFactory sslContextFactory = new SslContextFactory.Client.Client(true); // Accept all certificates
+            sslContextFactory.setTrustAll(true);
+            sslContextFactory.setValidateCerts(false);
+            sslContextFactory.setValidatePeerCerts(false);
+            sslContextFactory.setEndpointIdentificationAlgorithm(null);
+
+            BoschHttpClient httpClient = new BoschHttpClient(ipAddress, sslContextFactory);
             httpClient.start();
-            ContentResponse contentResponse = httpClient.newRequest(url).method(HttpMethod.GET).send();
+            // do rest to get public information including actual IP address of SHC
+            ContentResponse contentResponse = httpClient.newRequest(httpClient.getPublicInformationUrl())
+                    .method(HttpMethod.GET).send();
+            httpClient.stop();
+
             // check HTTP status code
             if (!HttpStatus.getCode(contentResponse.getStatus()).isSuccess()) {
                 logger.debug("Discovering failed with status code: {}", contentResponse.getStatus());
@@ -135,15 +145,19 @@ public class BridgeDiscoveryParticipant implements MDNSDiscoveryParticipant {
             @Nullable
             PublicInformation versionInfo = gson.fromJson(content, PublicInformation.class);
             if (versionInfo != null) {
+                cachedIpAddress = versionInfo.shcIpAddress;
                 return versionInfo.shcIpAddress;
             }
+
             return null;
 
         } catch (InterruptedException | TimeoutException | ExecutionException e) {
-            logger.trace("Discovering failed with exception", e);
+            logger.debug("Discovering failed with exception {}", e.getMessage());
+            logger.trace("Discovering failed with exception ", e);
             return null;
         } catch (Exception e) {
-            logger.trace("Discovering failed in http client start", e);
+            logger.debug("Discovering failed in httpClient start {}", e.getMessage());
+            logger.trace("Discovering failed in httpClient start", e);
             return null;
         }
     }

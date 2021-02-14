@@ -23,7 +23,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.openhab.binding.boschshc.internal.devices.bridge.dto.SubscribeResult;
-import org.openhab.binding.boschshc.internal.exceptions.PairingFailedException;
+import org.openhab.binding.boschshc.internal.exceptions.KeystoreException;
 
 /**
  * Tests cases for {@link BoschHttpClient}.
@@ -42,9 +42,9 @@ class BoschHttpClientTest {
     }
 
     @BeforeEach
-    void beforeEach() throws PairingFailedException {
+    void beforeEach() throws KeystoreException {
         SslContextFactory sslFactory = new BoschSslUtil("127.0.0.1").getSslContextFactory();
-        httpClient = new BoschHttpClient("127.0.0.1", "dummy", sslFactory);
+        httpClient = new BoschHttpClient("127.0.0.1", sslFactory);
         assertNotNull(httpClient);
     }
 
@@ -87,7 +87,7 @@ class BoschHttpClientTest {
 
     @Test
     void doPairing() throws InterruptedException {
-        assertFalse(httpClient.doPairing());
+        assertFalse(httpClient.doPairing("unknownPassword"));
     }
 
     @Test
