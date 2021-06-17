@@ -49,6 +49,7 @@ The Twinguard smoke detector warns you in case of fire and constantly monitors t
 | purity-rating      | String               | &#9744;  | Rating of current measured purity.                                                                |
 | air-description    | String               | &#9744;  | Overall description of the air quality.                                                           |
 | combined-rating    | String               | &#9744;  | Combined rating of the air quality.                                                               |
+| smoke-check        | String               | &#9745;  | State of the smoke check. Also used to request a new smoke check.                                 |
 
 ### Door/Window contact
 

@@ -59,4 +59,5 @@ public class BoschSHCBindingConstants {
     public static final String CHANNEL_VALVE_TAPPET_POSITION = "valve-tappet-position";
     public static final String CHANNEL_SETPOINT_TEMPERATURE = "setpoint-temperature";
     public static final String CHANNEL_CHILD_LOCK = "child-lock";
+    public static final String CHANNEL_SMOKE_CHECK = "smoke-check";
 }
