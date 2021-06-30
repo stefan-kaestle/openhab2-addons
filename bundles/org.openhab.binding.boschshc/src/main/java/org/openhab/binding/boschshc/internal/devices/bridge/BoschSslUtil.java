@@ -43,7 +43,7 @@ import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
-import org.openhab.binding.boschshc.internal.exceptions.PairingFailedException;
+import org.openhab.binding.boschshc.internal.exceptions.KeystoreException;
 import org.openhab.core.OpenHAB;
 import org.openhab.core.id.InstanceUUID;
 import org.slf4j.Logger;
@@ -104,7 +104,7 @@ public class BoschSslUtil {
         return Paths.get(OpenHAB.getUserDataFolder(), "etc", getBoschShcServerId() + ".jks").toString();
     }
 
-    public SslContextFactory getSslContextFactory() throws PairingFailedException {
+    public SslContextFactory getSslContextFactory() throws KeystoreException {
         // Instantiate and configure the SslContextFactory
         SslContextFactory sslContextFactory = new SslContextFactory.Client.Client(true); // Accept all certificates
 
@@ -125,7 +125,7 @@ public class BoschSslUtil {
         return sslContextFactory;
     }
 
-    public KeyStore getKeyStoreAndCreateIfNecessary() throws PairingFailedException {
+    public KeyStore getKeyStoreAndCreateIfNecessary() throws KeystoreException {
         try {
             File file = new File(keystorePath);
             if (!file.exists()) {
@@ -143,8 +143,8 @@ public class BoschSslUtil {
             }
         } catch (OperatorCreationException | GeneralSecurityException | IOException e) {
             logger.debug("Exception during keystore creation {}", e.getMessage());
-            throw new PairingFailedException("Can not create or load keystore file: " + keystorePath
-                    + ". Check path, write access and JKS content.", e);
+            throw new KeystoreException("Can not create or load keystore file: " + keystorePath
+                    + ". Check path, write access and JavaKeyStore content.", e);
         }
     }
 

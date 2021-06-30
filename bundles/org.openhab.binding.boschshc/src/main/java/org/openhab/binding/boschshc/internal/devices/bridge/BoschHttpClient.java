@@ -56,12 +56,10 @@ public class BoschHttpClient extends HttpClient {
     private final Logger logger = LoggerFactory.getLogger(BoschHttpClient.class);
 
     private final String ipAddress;
-    private final String systemPassword;
 
-    public BoschHttpClient(String ipAddress, String systemPassword, SslContextFactory sslContextFactory) {
+    public BoschHttpClient(String ipAddress, SslContextFactory sslContextFactory) {
         super(sslContextFactory);
         this.ipAddress = ipAddress;
-        this.systemPassword = systemPassword;
     }
 
     /**
@@ -181,7 +179,7 @@ public class BoschHttpClient extends HttpClient {
      * @return true if pairing was successful, otherwise false
      * @throws InterruptedException in case of an interrupt
      */
-    public boolean doPairing() throws InterruptedException {
+    public boolean doPairing(String systemPassword) throws InterruptedException {
         logger.trace("Starting pairing openHAB Client with Bosch Smart Home Controller!");
         logger.trace("Please press the Bosch Smart Home Controller button until LED starts blinking");
 
@@ -201,7 +199,7 @@ public class BoschHttpClient extends HttpClient {
 
             String url = this.getPairingUrl();
             Request request = this.createRequest(url, HttpMethod.POST, items).header("Systempassword",
-                    Base64.getEncoder().encodeToString(this.systemPassword.getBytes(StandardCharsets.UTF_8)));
+                    Base64.getEncoder().encodeToString(systemPassword.getBytes(StandardCharsets.UTF_8)));
 
             contentResponse = request.send();
 
@@ -290,11 +288,12 @@ public class BoschHttpClient extends HttpClient {
             if (errorResponseHandler != null) {
                 throw errorResponseHandler.apply(statusCode, textContent);
             } else {
-                throw new ExecutionException(String.format("Request failed with status code %s", statusCode), null);
+                throw new ExecutionException(String.format("Send request failed with status code %s", statusCode),
+                        null);
             }
         }
 
-        logger.debug("Received response: {} - status: {}", textContent, statusCode);
+        logger.debug("Send request completed with success: {} - status code: {}", textContent, statusCode);
 
         try {
             @Nullable

@@ -16,6 +16,8 @@ import static org.eclipse.jetty.http.HttpMethod.*;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -33,9 +35,10 @@ import org.openhab.binding.boschshc.internal.devices.bridge.dto.Device;
 import org.openhab.binding.boschshc.internal.devices.bridge.dto.DeviceStatusUpdate;
 import org.openhab.binding.boschshc.internal.devices.bridge.dto.LongPollResult;
 import org.openhab.binding.boschshc.internal.devices.bridge.dto.Room;
+import org.openhab.binding.boschshc.internal.discovery.ThingDiscoveryService;
 import org.openhab.binding.boschshc.internal.exceptions.BoschSHCException;
+import org.openhab.binding.boschshc.internal.exceptions.KeystoreException;
 import org.openhab.binding.boschshc.internal.exceptions.LongPollingFailedException;
-import org.openhab.binding.boschshc.internal.exceptions.PairingFailedException;
 import org.openhab.binding.boschshc.internal.services.dto.BoschSHCServiceState;
 import org.openhab.binding.boschshc.internal.services.dto.JsonRestExceptionResponse;
 import org.openhab.core.thing.Bridge;
@@ -45,6 +48,7 @@ import org.openhab.core.thing.ThingStatus;
 import org.openhab.core.thing.ThingStatusDetail;
 import org.openhab.core.thing.binding.BaseBridgeHandler;
 import org.openhab.core.thing.binding.ThingHandler;
+import org.openhab.core.thing.binding.ThingHandlerService;
 import org.openhab.core.types.Command;
 import org.osgi.framework.FrameworkUtil;
 import org.slf4j.Logger;
@@ -75,14 +79,30 @@ public class BridgeHandler extends BaseBridgeHandler {
      */
     private final LongPolling longPolling;
 
+    /**
+     * HTTP Client for Bosch SHC rest calls and long polling.
+     */
     private @Nullable BoschHttpClient httpClient;
 
+    /**
+     * Future result to handle successful or failed pairing between bridge and SHC.
+     */
     private @Nullable ScheduledFuture<?> scheduledPairing;
+
+    /**
+     * Bosch SHC system password
+     */
+    private String password;
 
     public BridgeHandler(Bridge bridge) {
         super(bridge);
-
+        this.password = "";
         this.longPolling = new LongPolling(this.scheduler, this::handleLongPollResult, this::handleLongPollFailure);
+    }
+
+    @Override
+    public Collection<Class<? extends ThingHandlerService>> getServices() {
+        return Collections.singleton(ThingDiscoveryService.class);
     }
 
     @Override
@@ -100,8 +120,8 @@ public class BridgeHandler extends BaseBridgeHandler {
             return;
         }
 
-        String password = config.password.trim();
-        if (password.isEmpty()) {
+        this.password = config.password.trim();
+        if (this.password.isEmpty()) {
             updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.CONFIGURATION_ERROR,
                     "@text/offline.conf-error-empty-password");
             return;
@@ -111,14 +131,14 @@ public class BridgeHandler extends BaseBridgeHandler {
         try {
             // prepare SSL key and certificates
             factory = new BoschSslUtil(ipAddress).getSslContextFactory();
-        } catch (PairingFailedException e) {
+        } catch (KeystoreException e) {
             this.updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.OFFLINE.CONFIGURATION_ERROR,
                     "@text/offline.conf-error-ssl");
             return;
         }
 
         // Instantiate HttpClient with the SslContextFactory
-        BoschHttpClient httpClient = this.httpClient = new BoschHttpClient(ipAddress, password, factory);
+        BoschHttpClient httpClient = this.httpClient = new BoschHttpClient(ipAddress, factory);
 
         // Start http client
         try {
@@ -203,7 +223,7 @@ public class BridgeHandler extends BaseBridgeHandler {
                 // update status description to show pairing test
                 this.updateStatus(ThingStatus.UNKNOWN, ThingStatusDetail.UNKNOWN.NONE,
                         "@text/offline.conf-error-pairing");
-                if (!httpClient.doPairing()) {
+                if (!httpClient.doPairing(this.password)) {
                     this.updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.OFFLINE.CONFIGURATION_ERROR,
                             "@text/offline.conf-error-pairing");
                 }
@@ -216,7 +236,7 @@ public class BridgeHandler extends BaseBridgeHandler {
             // print rooms and devices
             boolean thingReachable = true;
             thingReachable &= this.getRooms();
-            thingReachable &= this.getDevices();
+            thingReachable &= (this.getDevices() != null);
             if (!thingReachable) {
                 this.updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.OFFLINE.COMMUNICATION_ERROR,
                         "@text/offline.not-reachable");
@@ -232,7 +252,6 @@ public class BridgeHandler extends BaseBridgeHandler {
             } catch (LongPollingFailedException e) {
                 this.handleLongPollFailure(e);
             }
-
         } catch (InterruptedException e) {
             this.updateStatus(ThingStatus.UNKNOWN, ThingStatusDetail.UNKNOWN.NONE, "@text/offline.interrupted");
             Thread.currentThread().interrupt();
@@ -244,11 +263,11 @@ public class BridgeHandler extends BaseBridgeHandler {
      *
      * @throws InterruptedException in case bridge is stopped
      */
-    private boolean getDevices() throws InterruptedException {
+    public @Nullable ArrayList<Device> getDevices() throws InterruptedException {
         @Nullable
         BoschHttpClient httpClient = this.httpClient;
         if (httpClient == null) {
-            return false;
+            return null;
         }
 
         try {
@@ -259,7 +278,7 @@ public class BridgeHandler extends BaseBridgeHandler {
             // check HTTP status code
             if (!HttpStatus.getCode(contentResponse.getStatus()).isSuccess()) {
                 logger.debug("Request devices failed with status code: {}", contentResponse.getStatus());
-                return false;
+                return null;
             }
 
             String content = contentResponse.getContentAsString();
@@ -270,23 +289,23 @@ public class BridgeHandler extends BaseBridgeHandler {
             }.getType();
             ArrayList<Device> devices = gson.fromJson(content, collectionType);
 
-            if (devices != null) {
-                for (Device d : devices) {
-                    // Write found devices into openhab.log until we have implemented auto discovery
-                    logger.info("Found device: name={} id={}", d.name, d.id);
-                    if (d.deviceSerivceIDs != null) {
-                        for (String s : d.deviceSerivceIDs) {
-                            logger.info(".... service: {}", s);
-                        }
-                    }
-                }
-            }
+            // if (devices != null) {
+            // for (Device d : devices) {
+            // // Write found devices into openhab.log until we have implemented auto discovery
+            // logger.info("Found device: name={} id={}", d.name, d.id);
+            // if (d.deviceSerivceIDs != null) {
+            // for (String s : d.deviceSerivceIDs) {
+            // logger.info(".... service: {}", s);
+            // }
+            // }
+            // }
+            // }
+
+            return devices;
         } catch (TimeoutException | ExecutionException e) {
             logger.warn("Request devices failed because of {}!", e.getMessage());
-            return false;
+            return null;
         }
-
-        return true;
     }
 
     /**
@@ -387,7 +406,7 @@ public class BridgeHandler extends BaseBridgeHandler {
 
                 if (rooms != null) {
                     for (Room r : rooms) {
-                        logger.info("Found room: {}", r.name);
+                        logger.info("Found room: {} (ID={})", r.name, r.id);
                     }
                 }
 

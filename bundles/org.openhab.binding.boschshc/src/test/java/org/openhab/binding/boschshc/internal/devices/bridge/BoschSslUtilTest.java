@@ -22,7 +22,7 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.openhab.binding.boschshc.internal.exceptions.PairingFailedException;
+import org.openhab.binding.boschshc.internal.exceptions.KeystoreException;
 
 /**
  * Tests cases for {@link BoschSslUtil}.
@@ -72,7 +72,7 @@ class BoschSslUtilTest {
      * Test if the keyStore can be created if it doesn't exist.
      */
     @Test
-    void keyStoreAndFactory() throws PairingFailedException {
+    void keyStoreAndFactory() throws KeystoreException {
         BoschSslUtil sslUtil1 = new BoschSslUtil("127.0.0.1");
 
         // remote old, existing jks
